@@ -72,6 +72,45 @@ async function queryUrlhaus(value: string, kind: Kind, key: string) {
   return { status: records.length ? "Match found" : "No match", count: records.length, records };
 }
 
+
+async function queryVirusTotal(value: string, kind: Kind, key: string) {
+  let resource: string;
+  if (kind === "IP address") resource = `ip_addresses/${encodeURIComponent(value)}`;
+  else if (kind === "Domain") resource = `domains/${encodeURIComponent(value)}`;
+  else if (kind === "URL") {
+    const encoded = Buffer.from(value, "utf8").toString("base64").replace(/=+$/g, "").replace(/\\+/g, "-").replace(/\\//g, "_");
+    resource = `urls/${encoded}`;
+  } else resource = `files/${encodeURIComponent(value)}`;
+
+  const response = await fetch(`https://www.virustotal.com/api/v3/${resource}`, {
+    headers: { "x-apikey": key, "Accept": "application/json" },
+    cache: "no-store",
+    signal: AbortSignal.timeout(15000)
+  });
+  if (response.status === 404) return { status: "No match", count: 0, records: [], detail: "VirusTotal has no report for this indicator." };
+  if (response.status === 401 || response.status === 403) throw new Error(`VirusTotal authentication or permission error (HTTP ${response.status}). Check the API key and plan permissions.`);
+  if (response.status === 429) throw new Error("VirusTotal rate limit reached. Try again later.");
+  if (!response.ok) throw new Error(`VirusTotal HTTP ${response.status}`);
+
+  const json = await response.json();
+  const attr = json?.data?.attributes || {};
+  const stats = attr.last_analysis_stats || {};
+  const malicious = Number(stats.malicious || 0);
+  const suspicious = Number(stats.suspicious || 0);
+  const total = Object.values(stats).reduce((sum: number, n: any) => sum + Number(n || 0), 0);
+  const names = Array.isArray(attr.names) ? attr.names.slice(0, 5) : [];
+  const record = {
+    indicator: value,
+    threat: malicious > 0 ? "Malicious detections reported" : suspicious > 0 ? "Suspicious detections reported" : "Analysis report available",
+    status: attr.reputation !== undefined ? `Community reputation: ${attr.reputation}` : null,
+    malicious, suspicious, harmless: Number(stats.harmless || 0), undetected: Number(stats.undetected || 0),
+    totalEngines: total, firstSeen: attr.first_submission_date ? new Date(attr.first_submission_date * 1000).toISOString() : null,
+    lastSeen: attr.last_analysis_date ? new Date(attr.last_analysis_date * 1000).toISOString() : null,
+    tags: [...(Array.isArray(attr.tags) ? attr.tags.slice(0, 8) : []), ...names]
+  };
+  return { status: "Match found", count: 1, records: [record] };
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -80,26 +119,30 @@ export async function POST(request: NextRequest) {
     if (!value || !["IP address", "Domain", "URL", "File hash"].includes(kind) || !validate(value, kind)) {
       return NextResponse.json({ error: "Invalid indicator or indicator type." }, { status: 400 });
     }
-    const key = process.env.ABUSECH_AUTH_KEY;
-    if (!key) {
+    const abuseKey = process.env.ABUSECH_AUTH_KEY;
+    const vtKey = process.env.VIRUSTOTAL_API_KEY;
+    if (!abuseKey && !vtKey) {
       return NextResponse.json({
         indicator: value,
         providers: [
+          { name: "VirusTotal", status: "Not configured", detail: "Add VIRUSTOTAL_API_KEY in Vercel environment variables." },
           { name: "ThreatFox", status: "Not configured", detail: "Add ABUSECH_AUTH_KEY in Vercel environment variables." },
           { name: "URLhaus", status: "Not configured", detail: "Add ABUSECH_AUTH_KEY in Vercel environment variables." }
         ],
         note: "No external query was made. No verdict has been inferred."
       });
     }
-    const settled = await Promise.allSettled([
-      queryThreatFox(value, key),
-      queryUrlhaus(value, kind, key)
-    ]);
-    const providers = ["ThreatFox", "URLhaus"].map((name, i) => {
-      const item = settled[i];
-      if (item.status === "rejected") return { name, status: "API error", detail: item.reason instanceof Error ? item.reason.message : "Provider request failed." };
-      return { name, ...item.value };
-    });
+    const tasks = [
+      { name: "VirusTotal", key: vtKey, run: () => queryVirusTotal(value, kind, vtKey!) },
+      { name: "ThreatFox", key: abuseKey, run: () => queryThreatFox(value, abuseKey!) },
+      { name: "URLhaus", key: abuseKey, run: () => queryUrlhaus(value, kind, abuseKey!) }
+    ];
+    const settled = await Promise.all(tasks.map(async (task) => {
+      if (!task.key) return { name: task.name, status: "Not configured", detail: task.name === "VirusTotal" ? "Add VIRUSTOTAL_API_KEY in Vercel environment variables." : "Add ABUSECH_AUTH_KEY in Vercel environment variables." };
+      try { return { name: task.name, ...await task.run() }; }
+      catch (error) { return { name: task.name, status: "API error", detail: error instanceof Error ? error.message : "Provider request failed." }; }
+    }));
+    const providers = settled;
     return NextResponse.json({ indicator: value, queriedAt: new Date().toISOString(), providers, note: "A provider match is evidence from that source, not a definitive verdict. No match does not mean safe." });
   } catch {
     return NextResponse.json({ error: "Unable to process the lookup." }, { status: 500 });
