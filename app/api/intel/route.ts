@@ -31,7 +31,7 @@ async function queryThreatFox(value: string, key: string) {
   if (json.query_status === "no_result") return { status: "No match", count: 0, records: [] };
   if (json.query_status !== "ok") throw new Error(json.query_status || "ThreatFox query failed");
   const records = Array.isArray(json.data) ? json.data : [];
-  return { status: records.length ? "Match found" : "No match", count: records.length, records: records.slice(0, 10).map((x: any) => ({
+  return { status: records.length ? "Match found" : "No match", count: records.length, reportUrl: "https://threatfox.abuse.ch/browse.php?search=" + encodeURIComponent(value), records: records.slice(0, 10).map((x: any) => ({
     indicator: x.ioc, type: x.ioc_type, threat: x.threat_type_desc || x.threat_type,
     malware: x.malware_printable || x.malware || null, confidence: x.confidence_level ?? null,
     firstSeen: x.first_seen || null, lastSeen: x.last_seen || null, tags: x.tags || []
@@ -69,7 +69,7 @@ async function queryUrlhaus(value: string, kind: Kind, key: string) {
     lastSeen: x.last_online || null,
     tags: x.tags || []
   }));
-  return { status: records.length ? "Match found" : "No match", count: records.length, records };
+  return { status: records.length ? "Match found" : "No match", count: records.length, records, reportUrl: "https://urlhaus.abuse.ch/browse.php?search=" + encodeURIComponent(value) };
 }
 
 
@@ -103,12 +103,14 @@ async function queryVirusTotal(value: string, kind: Kind, key: string) {
     indicator: value,
     threat: malicious > 0 ? "Malicious detections reported" : suspicious > 0 ? "Suspicious detections reported" : "Analysis report available",
     status: attr.reputation !== undefined ? `Community reputation: ${attr.reputation}` : null,
-    malicious, suspicious, harmless: Number(stats.harmless || 0), undetected: Number(stats.undetected || 0),
+    malicious, suspicious, harmless: Number(stats.harmless || 0), undetected: Number(stats.undetected || 0), reputation: attr.reputation ?? null,
     totalEngines: total, firstSeen: attr.first_submission_date ? new Date(attr.first_submission_date * 1000).toISOString() : null,
     lastSeen: attr.last_analysis_date ? new Date(attr.last_analysis_date * 1000).toISOString() : null,
     tags: [...(Array.isArray(attr.tags) ? attr.tags.slice(0, 8) : []), ...names]
   };
-  return { status: "Match found", count: 1, records: [record] };
+  const reportType = kind === "IP address" ? "ip-address" : kind === "Domain" ? "domain" : kind === "URL" ? "url" : "file";
+  const reportId = kind === "URL" ? Buffer.from(value, "utf8").toString("base64").replace(/=+$/g, "").replace(/\+/g, "-").replace(/\//g, "_") : encodeURIComponent(value);
+  return { status: "Match found", count: 1, records: [record], reportUrl: "https://www.virustotal.com/gui/" + reportType + "/" + reportId };
 }
 
 export async function POST(request: NextRequest) {
