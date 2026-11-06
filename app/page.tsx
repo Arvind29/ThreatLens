@@ -15,7 +15,7 @@ const examples = [{value:"185.220.101.1",kind:"IP address",time:"Sample entry"},
 
 export default function Home(){
  const [kind,setKind]=useState("IP address"),[value,setValue]=useState(""),[searched,setSearched]=useState(false),[notice,setNotice]=useState(""),[enabled,setEnabled]=useState(providers.map(p=>p[0])),[view,setView]=useState("Investigation");
- const valid=()=>{const v=value.trim();if(kind==="IP address")return /^(?:\\d{1,3}\\.){3}\\d{1,3}$/.test(v)||v.includes(":");if(kind==="Domain")return /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,}$/i.test(v);if(kind==="URL"){try{return ["http:","https:"].includes(new URL(v).protocol)}catch{return false}}return /^[a-f0-9]{32}$|^[a-f0-9]{40}$|^[a-f0-9]{64}$/i.test(v)};
+ const valid=()=>{const v=value.trim();if(!v)return false;if(kind==="IP address"){if(v.includes(":"))return /^[0-9a-f:]+$/i.test(v)&&v.includes(":")&&v.split(":").length<=8;if(!/^(?:\d{1,3}\.){3}\d{1,3}$/.test(v))return false;return v.split(".").every(part=>Number(part)>=0&&Number(part)<=255)}if(kind==="Domain")return /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/i.test(v);if(kind==="URL"){try{return ["http:","https:"].includes(new URL(v).protocol)}catch{return false}}return /^[a-f0-9]{32}$|^[a-f0-9]{40}$|^[a-f0-9]{64}$/i.test(v)};
  const lookup=()=>{if(!valid()){setNotice("Enter a valid "+kind.toLowerCase()+".");return}setNotice("");setSearched(true)};
  const selectExample=(v:string,k:string)=>{setValue(v);setKind(k);setSearched(false);setView("Investigation")};
  return <main className="app">
