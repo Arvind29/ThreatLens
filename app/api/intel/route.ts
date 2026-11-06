@@ -78,7 +78,7 @@ async function queryVirusTotal(value: string, kind: Kind, key: string) {
   if (kind === "IP address") resource = `ip_addresses/${encodeURIComponent(value)}`;
   else if (kind === "Domain") resource = `domains/${encodeURIComponent(value)}`;
   else if (kind === "URL") {
-    const encoded = Buffer.from(value, "utf8").toString("base64").replace(/=+$/g, "").replace(/\\+/g, "-").replace(/\\//g, "_");
+    const encoded = Buffer.from(value, "utf8").toString("base64").replace(/=+$/g, "").replace(/\+/g, "-").replace(/\//g, "_");
     resource = `urls/${encoded}`;
   } else resource = `files/${encodeURIComponent(value)}`;
 
