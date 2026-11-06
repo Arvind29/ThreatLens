@@ -19,7 +19,12 @@ function validate(value: string, kind: Kind) {
 }
 
 
+function isPublicIp(ip:string){
+  if(ip.includes(":")){const v=ip.toLowerCase();return !(v==="::1"||v==="::"||v.startsWith("fc")||v.startsWith("fd")||v.startsWith("fe80:"))}
+  const [a,b]=ip.split(".").map(Number);return !(a===10||a===127||a===0||a>=224||(a===169&&b===254)||(a===172&&b>=16&&b<=31)||(a===192&&b===168)||(a===100&&b>=64&&b<=127));
+}
 async function queryIpContext(ip: string) {
+  if(!isPublicIp(ip)) return {status:"Private / reserved IP",count:0,matchScope:"Local address classification",detail:"This address is private, loopback, link-local or reserved. Public geolocation was not requested.",records:[]};
   const response = await fetch("https://ipwho.is/" + encodeURIComponent(ip), {
     cache: "no-store", signal: AbortSignal.timeout(10000)
   });
@@ -31,7 +36,7 @@ async function queryIpContext(ip: string) {
   return {
     status: "Context available", count: 1, matchScope: "IP ownership and geolocation context",
     records: [{
-      indicator: ip, ip: data.ip || ip, version: data.type || null,
+      indicator: ip, ip: data.ip || ip, version: data.type || (ip.includes(":")?"IPv6":"IPv4"), source:"ipwho.is",
       hostname: data.hostname || null, city: data.city || null, region: data.region || null,
       regionCode: data.region_code || null, country: data.country || null,
       countryCode: data.country_code || null, continent: data.continent || null,
@@ -176,7 +181,7 @@ export async function POST(request: NextRequest) {
       catch (error) { return { name: task.name, status: "API error", detail: error instanceof Error ? error.message : "Provider request failed." }; }
     }));
     const providers = settled;
-    return NextResponse.json({ indicator: value, queriedAt: new Date().toISOString(), providers, note: "A provider match is evidence from that source, not a definitive verdict. No match does not mean safe." });
+    return NextResponse.json({ indicator: value, kind, queriedAt: new Date().toISOString(), providers, note: "A provider match is evidence from that source, not a definitive verdict. No match does not mean safe." });
   } catch {
     return NextResponse.json({ error: "Unable to process the lookup." }, { status: 500 });
   }
