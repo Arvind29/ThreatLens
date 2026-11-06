@@ -18,6 +18,31 @@ function validate(value: string, kind: Kind) {
   return /^[a-f0-9]{32}$|^[a-f0-9]{40}$|^[a-f0-9]{64}$/i.test(value);
 }
 
+
+async function queryIpContext(ip: string) {
+  const response = await fetch("https://ipwho.is/" + encodeURIComponent(ip), {
+    cache: "no-store", signal: AbortSignal.timeout(10000)
+  });
+  if (!response.ok) throw new Error(`IP context HTTP ${response.status}`);
+  const data = await response.json();
+  if (!data.success) throw new Error(data.message || "IP context lookup unavailable");
+  const connection = data.connection || {};
+  const timezone = data.timezone || {};
+  return {
+    status: "Context available", count: 1, matchScope: "IP ownership and geolocation context",
+    records: [{
+      indicator: ip, ip: data.ip || ip, version: data.type || null,
+      hostname: data.hostname || null, city: data.city || null, region: data.region || null,
+      regionCode: data.region_code || null, country: data.country || null,
+      countryCode: data.country_code || null, continent: data.continent || null,
+      postal: data.postal || null, latitude: data.latitude ?? null, longitude: data.longitude ?? null,
+      timezone: timezone.id || null, utcOffset: timezone.utc || null,
+      isp: connection.isp || null, organization: connection.org || null,
+      asn: connection.asn || null, domain: connection.domain || null
+    }]
+  };
+}
+
 async function queryThreatFox(value: string, key: string) {
   const response = await fetch("https://threatfox-api.abuse.ch/api/v1/", {
     method: "POST",
@@ -140,6 +165,7 @@ export async function POST(request: NextRequest) {
       });
     }
     const tasks = [
+      ...(kind === "IP address" ? [{ name: "IP Context", key: "public", run: () => queryIpContext(value) }] : []),
       { name: "VirusTotal", key: vtKey, run: () => queryVirusTotal(value, kind, vtKey!) },
       { name: "ThreatFox", key: abuseKey, run: () => queryThreatFox(value, abuseKey!) },
       { name: "URLhaus", key: abuseKey, run: () => queryUrlhaus(value, kind, abuseKey!) }
