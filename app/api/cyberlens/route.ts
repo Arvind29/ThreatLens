@@ -28,20 +28,35 @@ export async function POST(request: NextRequest) {
       "Respond in concise Markdown with: assessment, evidence, limitations, recommended actions. If no provider evidence was supplied, say that no live reputation lookup was performed. Never call an indicator safe merely because no match was returned."
     ].join("\n\n");
 
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.2, maxOutputTokens: 900 }
-      }),
-      cache: "no-store",
-      signal: AbortSignal.timeout(25000)
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      const detail = data?.error?.message || `Gemini API HTTP ${response.status}`;
-      return NextResponse.json({ error: detail }, { status: response.status === 429 ? 429 : 502 });
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+    const payload = {
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      generationConfig: { temperature: 0.2, maxOutputTokens: 900 }
+    };
+    let response: Response | null = null;
+    let data: any = {};
+    // Retry temporary Gemini capacity/rate-limit responses twice.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        cache: "no-store",
+        signal: AbortSignal.timeout(25000)
+      });
+      data = await response.json().catch(() => ({}));
+      if (response.ok || ![429, 500, 502, 503, 504].includes(response.status) || attempt === 2) break;
+      await new Promise(resolve => setTimeout(resolve, 900 * (attempt + 1)));
+    }
+    if (!response || !response.ok) {
+      const detail = data?.error?.message || `Gemini API HTTP ${response?.status || "unknown"}`;
+      const temporary = response ? [429, 500, 502, 503, 504].includes(response.status) : true;
+      return NextResponse.json({
+        error: temporary
+          ? "Gemini is temporarily at capacity after automatic retries. Wait briefly and retry. Your indicator lookup is not affected."
+          : detail,
+        retryable: temporary
+      }, { status: temporary ? 503 : 502 });
     }
     const answer = (data?.candidates?.[0]?.content?.parts || []).map((part: any) => part.text || "").join("\n").trim();
     if (!answer) return NextResponse.json({ error: "Gemini returned no text. Check model access and API quota." }, { status: 502 });
