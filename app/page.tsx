@@ -39,9 +39,9 @@ export default function Home(){
  const [cyberLoading,setCyberLoading]=useState(false);
  const sendCyberMessage=async(text?:string)=>{const message=(text??cyberInput).trim();if(!message||cyberLoading)return;setCyberInput("");setCyberMessages(old=>[...old,{role:"user",text:message}]);setCyberLoading(true);try{
   let evidence:any=null;
-  const urlMatch=message.match(/https?:\\/\\/[^\\s<>"']+/i);
-  const ipMatch=message.match(/\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b/);
-  const hashMatch=message.match(/\\b(?:[a-f0-9]{64}|[a-f0-9]{40}|[a-f0-9]{32})\\b/i);
+  const urlMatch=message.match(/https?:\/\/[^\s<>"']+/i);
+  const ipMatch=message.match(/\b(?:\d{1,3}\.){3}\d{1,3}\b/);
+  const hashMatch=message.match(/\b(?:[a-f0-9]{64}|[a-f0-9]{40}|[a-f0-9]{32})\b/i);
   let indicator="",indicatorKind="";
   if(urlMatch){indicator=urlMatch[0].replace(/[),.!?]+$/,"");indicatorKind="URL";}
   else if(ipMatch){indicator=ipMatch[0];indicatorKind="IP address";}
