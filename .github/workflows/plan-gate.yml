@@ -1,0 +1,49 @@
+
+name: Plan Gate
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, edited, synchronize, reopened]
+
+permissions: {}
+
+jobs:
+  validate-plan:
+    name: Plan Gate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Validate PR plan
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          python - <<'PY'
+          import os
+          import re
+          import sys
+
+          body = os.environ.get("PR_BODY") or ""
+
+          match = re.search(
+              r"(?ms)^## 2\. Plan\s*\n(.*?)(?=^## |\Z)",
+              body
+          )
+
+          if not match:
+              print("FAIL: Plan section missing")
+              sys.exit(1)
+
+          plan = match.group(1)
+
+          plan = re.sub(r"<!--.*?-->", "", plan, flags=re.S)
+          plan = plan.replace(
+              "What was the implementation approach?", ""
+          ).strip()
+
+          if not plan:
+              print("FAIL: Plan section is empty")
+              sys.exit(1)
+
+          print("PASS: Plan section contains content")
+          PY
