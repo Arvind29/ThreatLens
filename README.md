@@ -30,3 +30,44 @@ Create a local `.env.local` file containing `ABUSECH_AUTH_KEY=your_key`. Keep th
 - Other four providers are listed in the UI but are not queried yet.
 
 A provider match is evidence from that source, not a definitive verdict. No match does not mean safe. Provider coverage, rate limits and licensing terms apply. Review each provider's current terms before commercial use.
+
+
+## Technology stack and architecture
+
+### Languages and frameworks
+- **TypeScript** — IOC normalization, provider adapters and application logic.
+- **Next.js 14 (App Router)** — web application and server-side API routes.
+- **React 18** — investigation interface and client-side state.
+- **HTML / JSX and CSS** — page structure and styling.
+
+### Runtime libraries
+| Library | Purpose |
+|---|---|
+| `next` | Application framework, routing and server-side API execution |
+| `react` / `react-dom` | UI rendering and components |
+| `lucide-react` | Interface icons |
+
+### Threat-intelligence integrations
+| Provider | Current implementation |
+|---|---|
+| ThreatFox (abuse.ch) | Live exact-IOC lookup |
+| URLhaus (abuse.ch) | Live URL, host/domain/IP and SHA-256 payload lookup |
+| VirusTotal | Planned; not queried in the current release |
+| AbuseIPDB | Planned; not queried in the current release |
+| AlienVault OTX | Planned; not queried in the current release |
+| GreyNoise | Planned; not queried in the current release |
+
+ThreatFox and URLhaus use the server-side `ABUSECH_AUTH_KEY` environment variable. Keep it out of client-side bundles and Git history.
+
+### Development and deployment
+- **Node.js / npm** — development runtime and dependency management.
+- **TypeScript** — static type checking.
+- **Vercel** — application hosting and deployment.
+
+### Investigation flow
+1. The analyst submits an IP address, domain, URL or file hash.
+2. The Next.js server routes the indicator to the supported provider adapters.
+3. ThreatFox and URLhaus return provider-native records and statuses.
+4. The interface presents source attribution and returned evidence without inventing a universal reputation score.
+
+**Important:** a provider match is evidence from that provider, not a definitive verdict. No match does not mean safe. Provider limits and terms apply. No database or user login is required in the current public preview.
